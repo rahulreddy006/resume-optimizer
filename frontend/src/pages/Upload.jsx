@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
+import { io } from 'socket.io-client';
 
 const Upload = () => {
   const [searchParams] = useSearchParams();
@@ -12,6 +13,7 @@ const Upload = () => {
   const [selectedResumeId, setSelectedResumeId] = useState(searchParams.get('resumeId') || '');
   const [jobDescription, setJobDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const [processingState, setProcessingState] = useState('');
 
   // Fetch existing resumes on mount
   useEffect(() => {
@@ -33,15 +35,18 @@ const Upload = () => {
     }
   };
 
+  // --- THE UNIFIED WEBSOCKET SUBMIT FUNCTION ---
   const handleAnalysisSubmit = async (e) => {
     e.preventDefault();
     if (!jobDescription) return;
+    
     setLoading(true);
+    setProcessingState('Uploading asset...');
 
     try {
       let activeResumeId = selectedResumeId;
 
-      // If they uploaded a new file instead of selecting an existing one, upload it first
+      // 1. Upload the file if it's new
       if (!activeResumeId && file) {
         const formData = new FormData();
         formData.append('file', file);
@@ -52,20 +57,37 @@ const Upload = () => {
       if (!activeResumeId) {
         alert('Please upload a document or select an existing one.');
         setLoading(false);
+        setProcessingState('');
         return;
       }
 
-      // Run the analysis against the active resume ID
+      setProcessingState('Queueing AI Job...');
+
+      // 2. Hit backend and get 202 Accepted instantly
       const response = await api.post('/analyses', {
         resumeId: activeResumeId,
         jobDescription
       });
       
-      navigate(`/results/${response.data.analysis.id}`);
+      const pendingAnalysisId = response.data.analysis.id;
+      setProcessingState('Gemini V2 Analyzing (Takes 15-20s)...');
+
+      // 3. Connect to WebSockets to wait for the result
+      const socket = io('http://localhost:3000'); 
+
+      // Listen for the exact event the BullMQ worker emits
+      socket.on('analysisComplete', (data) => {
+        if (data.analysisId === pendingAnalysisId) {
+          socket.disconnect(); // Clean up the connection
+          navigate(`/results/${pendingAnalysisId}`); // Push user to the completed report!
+        }
+      });
+
     } catch (err) {
+      console.error(err);
       alert(err.response?.data?.message || 'Analysis processing failed.');
-    } finally {
       setLoading(false);
+      setProcessingState('');
     }
   };
 
@@ -137,7 +159,7 @@ const Upload = () => {
             disabled={loading || (!file && !selectedResumeId) || !jobDescription}
             className="w-full md:w-auto bg-slate-900 text-white px-8 py-3.5 rounded-xl text-sm font-semibold shadow-sm hover:bg-slate-800 active:scale-[0.99] transition-all duration-200 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {loading ? 'Executing NLP Analytics...' : 'Run Alignment Engine'}
+           {loading ? processingState : 'Run Alignment Engine →'}
           </button>
         </div>
       </form>
