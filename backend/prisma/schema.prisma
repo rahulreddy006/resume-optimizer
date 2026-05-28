@@ -16,6 +16,7 @@ model User {
   name      String
   email     String     @unique
   password  String
+  credits   Int        @default(3) // <-- New: Freemium model
   createdAt DateTime   @default(now())
   resumes   Resume[]
   analyses  Analysis[]
@@ -33,17 +34,24 @@ model Resume {
 }
 
 model Analysis {
-  id              String   @id @default(uuid())
-  resumeId        String
-  resume          Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobDescription  String   @db.Text
-  score           Int
-  matchedKeywords String[]
-  missingKeywords String[]
-  sectionFeedback Json     // JSONB — handles unstructured feedback perfectly
-  suggestions     String[]
-  version         String   @default("v1")
-  createdAt       DateTime @default(now())
+  id               String   @id @default(uuid())
+  resumeId         String
+  resume           Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobDescription   String   @db.Text
+  score            Int
+  matchedKeywords  String[]
+  missingKeywords  String[]
+  sectionFeedback  Json     
+  suggestions      String[]
+  
+  // --- NEW V2 AI & ASYNC FIELDS ---
+  rewrittenBullets Json?    // Stores array of { original, rewritten, reasoning }
+  coverLetter      String?  @db.Text
+  jobId            String?  // BullMQ Job Tracking ID
+  status           String   @default("pending") // pending | processing | complete | failed
+  
+  version          String   @default("v2")
+  createdAt        DateTime @default(now())
 }

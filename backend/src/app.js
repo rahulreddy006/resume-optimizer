@@ -1,9 +1,12 @@
 import express from "express";
 import "dotenv/config";
 import cors from "cors";
+import http from "http";
 import authRoutes from "./routes/auth.routes.js";
 import resumeRoutes from "./routes/resume.routes.js";
 import analysisRoutes from "./routes/analysis.routes.js";
+import { initSocket } from './utils/socket.js';
+
 
 
 const app = express();
@@ -25,9 +28,14 @@ app.get("/health",(req,res)=>{
     })
 });
 
+const server = http.createServer(app);
+
+// 2. Attach Socket.io to that HTTP server
+initSocket(server);
+
 
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT,()=>{
+server.listen(PORT,()=>{
     console.log(`Server is listening to port ${PORT}`)
 })

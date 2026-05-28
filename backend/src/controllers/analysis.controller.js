@@ -1,5 +1,5 @@
 import prisma from "../utils/prisma.js";
-import { analyzeResumePipeline } from "../services/analyzer.service.js";
+import { analysisQueue } from "../services/queue.service.js";
 
 export const createAnalysis = async (req, res) => {
   try {
@@ -17,29 +17,38 @@ export const createAnalysis = async (req, res) => {
       return res.status(404).json({ message: "Resume not found or unauthorized" });
     }
 
-    // Run the upgraded pipeline
-    const analysisResult = analyzeResumePipeline(resume.rawText, jobDescription);
-
-    const newAnalysis = await prisma.analysis.create({
+    // 1. Create a "Pending" Analysis in the database immediately
+    // 1. Create a "Pending" Analysis in the database immediately
+    const pendingAnalysis = await prisma.analysis.create({
       data: {
         resumeId: resume.id,
         userId: req.user.userId,
         jobDescription,
-        score: analysisResult.score,
-        matchedKeywords: analysisResult.matchedKeywords,
-        missingKeywords: analysisResult.missingKeywords,
-        sectionFeedback: analysisResult.sectionFeedback,
-        suggestions: analysisResult.suggestions,
-        version: analysisResult.version,
+        score: 0, 
+        status: "pending",
+        version: "v2",
+        // Add these empty placeholders to satisfy Prisma's strict typing!
+        sectionFeedback: {},
+        matchedKeywords: [],
+        missingKeywords: [],
+        suggestions: []
       },
     });
 
-    res.status(201).json({
-      message: "Analysis complete",
-      analysis: newAnalysis,
+    // 2. Add the heavy job to the Redis/BullMQ Queue
+    await analysisQueue.add('analyze-resume', {
+      analysisId: pendingAnalysis.id,
+      resumeText: resume.rawText,
+      jobDescription: jobDescription
     });
+
+    // 3. Immediately return success to the user (Don't wait for the AI!)
+    res.status(202).json({
+      message: "Analysis added to processing queue",
+      analysis: pendingAnalysis,
+    });
+    
   } catch (error) {
-    console.error("Analysis error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -57,7 +66,6 @@ export const getAnalysisById = async (req, res) => {
 
     res.status(200).json(analysis);
   } catch (error) {
-    console.error("Fetch analysis error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -82,7 +90,6 @@ export const getAnalysesByResumeId = async (req, res) => {
 
     res.status(200).json(analyses);
   } catch (error) {
-    console.error("Fetch resume analyses error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
