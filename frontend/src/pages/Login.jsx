@@ -89,7 +89,7 @@ const Login = () => {
   type="button"
   onClick={() =>
     window.location.href =
-      `${import.meta.env.VITE_API_URL}api/auth/google`
+      `${import.meta.env.VITE_API_URL}/auth/google`
   }
   className="w-full flex items-center justify-center gap-3 border border-slate-200 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
 >
