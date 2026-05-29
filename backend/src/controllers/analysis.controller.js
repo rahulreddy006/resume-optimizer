@@ -1,12 +1,13 @@
 import prisma from "../utils/prisma.js";
 import { analysisQueue } from "../services/queue.service.js";
+import catchAsync from "../utils/catchAsync.js";
+import {AppError} from "../utils/AppError.js";
 
-export const createAnalysis = async (req, res) => {
-  try {
-    const { resumeId, jobDescription } = req.body;
+export const createAnalysis = catchAsync(async (req, res) => {
+  const { resumeId, jobDescription } = req.body;
 
     if (!resumeId || !jobDescription) {
-      return res.status(400).json({ message: "resumeId and jobDescription are required" });
+      throw new AppError("resumeId and jobDescription are required", 400);
     }
 
     const resume = await prisma.resume.findUnique({
@@ -14,7 +15,7 @@ export const createAnalysis = async (req, res) => {
     });
 
     if (!resume || resume.userId !== req.user.userId) {
-      return res.status(404).json({ message: "Resume not found or unauthorized" });
+      throw new AppError("Resume not found or unauthorized", 404);
     }
 
     // 1. Create a "Pending" Analysis in the database immediately
@@ -36,11 +37,23 @@ export const createAnalysis = async (req, res) => {
     });
 
     // 2. Add the heavy job to the Redis/BullMQ Queue
-    await analysisQueue.add('analyze-resume', {
-      analysisId: pendingAnalysis.id,
-      resumeText: resume.rawText,
-      jobDescription: jobDescription
-    });
+    await analysisQueue.add(
+  "analyze-resume",
+  {
+    analysisId: pendingAnalysis.id,
+    resumeText: resume.rawText,
+    jobDescription: jobDescription,
+  },
+  {
+    attempts: 5,
+    backoff: {
+      type: "exponential",
+      delay: 5000,
+    },
+    removeOnComplete: 50,
+    removeOnFail: 20,
+  }
+);
 
     // 3. Immediately return success to the user (Don't wait for the AI!)
     res.status(202).json({
@@ -48,32 +61,24 @@ export const createAnalysis = async (req, res) => {
       analysis: pendingAnalysis,
     });
     
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
+});
 
-export const getAnalysisById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const analysis = await prisma.analysis.findUnique({
+export const getAnalysisById = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const analysis = await prisma.analysis.findUnique({
       where: { id },
     });
 
     if (!analysis || analysis.userId !== req.user.userId) {
-      return res.status(404).json({ message: "Analysis not found or unauthorized" });
+      throw new AppError("Analysis not found or unauthorized", 404);
     }
 
     res.status(200).json(analysis);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
+});
 
-export const getAnalysesByResumeId = async (req, res) => {
-  try {
-    const { resumeId } = req.params;
-    
+export const getAnalysesByResumeId = catchAsync(async (req, res) => {
+  const { resumeId } = req.params;
+
     // Verify user owns the resume before fetching its analyses
     const resume = await prisma.resume.findUnique({
       where: { id: resumeId },
@@ -89,7 +94,4 @@ export const getAnalysesByResumeId = async (req, res) => {
     });
 
     res.status(200).json(analyses);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
+});
