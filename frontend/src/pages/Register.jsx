@@ -15,7 +15,7 @@ const Register = () => {
     try {
       await api.post('/auth/register', formData);
       const loginRes = await api.post('/auth/login', { email: formData.email, password: formData.password });
-      localStorage.setItem('token', loginRes.data.token);
+      localStorage.setItem('accessToken', loginRes.data.accessToken);
       localStorage.setItem('user', JSON.stringify(loginRes.data.user));
       navigate('/dashboard');
     } catch (err) {

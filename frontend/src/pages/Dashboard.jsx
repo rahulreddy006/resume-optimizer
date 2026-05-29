@@ -55,6 +55,7 @@ const Dashboard = () => {
   };
 
   return (
+    
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-10 animate-fade-in">
       
       {/* MOBILE FIX 1: Stack header on small screens, side-by-side on large screens */}
